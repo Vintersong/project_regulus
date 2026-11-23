@@ -48,3 +48,6 @@ app.*.map.json
 nova_sessions/
 shards/
 skill_audit.db*
+
+# Generated Android build output
+/android/build/
