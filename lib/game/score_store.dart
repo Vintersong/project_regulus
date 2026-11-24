@@ -34,3 +34,37 @@ class ScoreStore {
     return '$base${sep}Regulus${sep}highscore.txt';
   }
 }
+
+/// Remembers whether the tutorial has been done (or skipped), so it only runs
+/// by itself on the first launch. Same rules as [ScoreStore]: a file that
+/// can't be read or written just means "not done yet".
+class ProgressStore {
+  ProgressStore({String? path}) : _path = path ?? _defaultPath();
+
+  final String _path;
+
+  Future<bool> tutorialDone() async {
+    try {
+      return await File(_path).exists();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> markTutorialDone() async {
+    try {
+      final file = File(_path);
+      await file.parent.create(recursive: true);
+      await file.writeAsString('done');
+    } catch (_) {
+      // Worst case the tutorial offers itself again next launch.
+    }
+  }
+
+  static String _defaultPath() {
+    final env = Platform.environment;
+    final base = env['APPDATA'] ?? env['HOME'] ?? Directory.systemTemp.path;
+    final sep = Platform.pathSeparator;
+    return '$base${sep}Regulus${sep}tutorial_done';
+  }
+}

@@ -125,6 +125,21 @@ class LevelSet {
         ],
       );
 
+  /// The tutorial's field: no enemies or patrols, a low bar, two layers so it
+  /// can show a descent, and no random pickups (the script places them).
+  static const LevelDef tutorialLevel = LevelDef(
+    sign: 'Tutorial',
+    element: ElementType.earth,
+    captureTarget: 0.30,
+    enemies: {},
+    patrols: 0,
+    enemySpeed: 1,
+    patrolSpeed: 1,
+    respawnSeconds: 3,
+    pickupSeconds: 1e9,
+    layers: 2,
+  );
+
   /// The twelve zodiac levels.
   static final LevelSet zodiac = LevelSet(parent: _parent, children: _children);
 }

@@ -113,9 +113,8 @@ abstract final class GameConfig {
   static const double crackSeconds = 1.4;
   static const double crackJitter = 0.3;
 
-  // Air trade-off: you are faster, but so is everything else.
+  // Air: the player moves this much faster. Enemies are unaffected.
   static const double airPlayerSpeedScale = 1.8;
-  static const double airEnemySpeedScale = 1.5;
 
   // Whether the shine shader's FlutterFragCoord() is in device pixels rather
   // than local coordinates. It depends on the renderer; set after checking on

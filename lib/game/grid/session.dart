@@ -50,7 +50,17 @@ class GameSession {
   final LevelSet levels;
 
   /// The rules of the level being played.
-  LevelDef get def => levels.forLevel(level);
+  LevelDef get def => tutorial ? LevelSet.tutorialLevel : levels.forLevel(level);
+
+  /// Whether this is the tutorial's field rather than a zodiac level.
+  bool tutorial = false;
+
+  /// While true, reaching the target does not clear the layer yet. The
+  /// tutorial holds it until it has taught everything before that step.
+  bool holdWin = false;
+
+  /// Odds a mystery drop helps. The tutorial sets 1, so its drop is kind.
+  double dropGoodChance = GameConfig.dropGoodChance;
 
   /// How many enemies this layer keeps on the field: the level's own, plus
   /// more on each deeper layer.
@@ -141,6 +151,9 @@ class GameSession {
 
   /// A brand new run: level 1, no score, full lives.
   void restart() {
+    tutorial = false;
+    holdWin = false;
+    dropGoodChance = GameConfig.dropGoodChance;
     level = 1;
     layer = 1;
     score = 0;
@@ -150,10 +163,22 @@ class GameSession {
     _resetField();
   }
 
+  /// The tutorial's field, from the start. Finishing it (its last layer, then
+  /// [nextLevel]) starts a fresh run at level 1.
+  void startTutorial() {
+    restart();
+    tutorial = true;
+    _resetField();
+  }
+
   /// After a win: down to the next layer of this level, or, after its last
   /// layer, on to the next level (with a spare life). The score carries over.
   void nextLevel() {
     if (status != SessionStatus.won) return;
+    if (tutorial && isLastLayer) {
+      restart(); // tutorial done: the real game begins
+      return;
+    }
     if (!isLastLayer) {
       layer++;
     } else {
@@ -185,7 +210,7 @@ class GameSession {
     shield = false;
     _graceTime = 0;
     drops.clear();
-    if (spawnDrops) _buryDrops();
+    if (spawnDrops && !tutorial) _buryDrops();
     _spawned = 0;
     _waterWasActive = false;
     _refusedCooldown = 0;
@@ -246,7 +271,7 @@ class GameSession {
     }
     _updatePickup(dt);
     _respawnEnemies(dt);
-    if (grid.targetReached) _winLevel();
+    if (grid.targetReached && !holdWin) _winLevel();
   }
 
   /// Dev only: claims a block of ground with a border around it, so effects
@@ -538,9 +563,9 @@ class GameSession {
     }
   }
 
-  /// Speed multiplier on everything hostile: air, slow and rush stack.
+  /// Speed multiplier on everything hostile: slow and rush stack. (Air only
+  /// speeds the player up.)
   double get _hostileScale =>
-      (effects.isActive(ElementType.air) ? GameConfig.airEnemySpeedScale : 1.0) *
       (dropEffects.isActive(DropEffect.slow) ? GameConfig.slowEnemyScale : 1.0) *
       (dropEffects.isActive(DropEffect.rush) ? GameConfig.rushEnemyScale : 1.0);
 
@@ -666,7 +691,7 @@ class GameSession {
           sqrt(dx * dx + dy * dy) < GameConfig.dropCollectRadiusCells;
       if (!covered && !touched) continue;
       drops.remove(d);
-      final effect = rollDrop(random, goodChance: GameConfig.dropGoodChance);
+      final effect = rollDrop(random, goodChance: dropGoodChance);
       events.add(
         DropCollected(
           effect,

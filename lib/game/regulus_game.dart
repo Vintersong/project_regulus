@@ -22,6 +22,7 @@ import 'grid/powerups.dart';
 import 'grid/session.dart';
 import 'palette.dart';
 import 'score_store.dart';
+import 'tutorial.dart';
 
 class RegulusGame extends FlameGame with KeyboardEvents {
   RegulusGame()
@@ -61,6 +62,10 @@ class RegulusGame extends FlameGame with KeyboardEvents {
   /// All the rules live here; the components below only draw it.
   final GameSession session = GameSession(spawnDrops: true);
 
+  /// The guided tutorial's script; runs by itself on the first launch.
+  late final Tutorial tutorial = Tutorial(session);
+  final ProgressStore _progress = ProgressStore();
+
   /// Held directions in press order; the most recent one wins.
   final List<Direction> _held = [];
   Direction? get heldDirection => _held.isEmpty ? null : _held.last;
@@ -70,6 +75,7 @@ class RegulusGame extends FlameGame with KeyboardEvents {
   late final TextComponent _banner; // centre: win / game over
   late final TextComponent _score; // bottom-left: score, combo, best
   late final TextComponent _level; // bottom-right
+  late final TextComponent _lesson; // tutorial instruction, top of the field
 
   final ScoreStore _store = ScoreStore();
   int best = 0;
@@ -106,6 +112,20 @@ class RegulusGame extends FlameGame with KeyboardEvents {
       44,
     );
 
+    _lesson = TextComponent(
+      position: Vector2(GameConfig.viewWidth / 2, GameConfig.playfieldTop + 18),
+      anchor: Anchor.topCenter,
+      priority: 25,
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          color: Color(0xFFF2FFFB),
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+          shadows: [Shadow(color: Color(0xFF000000), blurRadius: 6)],
+        ),
+      ),
+    );
+
     // Bottom margin: score and combo on the left, level on the right.
     final bottom = GameConfig.playfieldTop + GameConfig.playfieldHeight + 8;
     _score = label(Vector2(GameConfig.playfieldLeft, bottom), Anchor.topLeft, 20);
@@ -132,6 +152,8 @@ class RegulusGame extends FlameGame with KeyboardEvents {
     );
 
     best = await _store.load();
+    // First launch: the tutorial runs by itself (ESC skips it).
+    if (!await _progress.tutorialDone()) tutorial.start();
 
     // Dev: REGULUS_DEMO=1 starts with some ground already won, so the shine
     // and the walkable-edge feedback can be looked at straight away. One
@@ -162,6 +184,7 @@ class RegulusGame extends FlameGame with KeyboardEvents {
       _banner,
       _score,
       _level,
+      _lesson,
       // Debug builds only: frames per second, to spot a slowdown over time.
       if (kDebugMode)
         FpsTextComponent(
@@ -181,6 +204,9 @@ class RegulusGame extends FlameGame with KeyboardEvents {
   @override
   void update(double dt) {
     session.update(dt, heldDirection);
+    // Before the effects layer drains this frame's events: the tutorial
+    // watches them to tell when a step is done.
+    tutorial.update();
     super.update(dt);
     if (!isLoaded) return;
     _trackStatus();
@@ -195,12 +221,16 @@ class RegulusGame extends FlameGame with KeyboardEvents {
       _newBest = false;
       return;
     }
+    if (session.tutorial) return; // practice doesn't count for the best
     if (session.score > best) {
       best = session.score;
       _newBest = true;
       unawaited(_store.save(best));
     }
   }
+
+  /// Remembers the tutorial is done, so it won't run by itself again.
+  void _finishTutorial() => unawaited(_progress.markTutorialDone());
 
   static String _commas(int n) => n.toString().replaceAllMapped(
         RegExp(r'\B(?=(\d{3})+(?!\d))'),
@@ -225,13 +255,25 @@ class RegulusGame extends FlameGame with KeyboardEvents {
         : '';
     _score.text = 'Score ${_commas(session.score)}$combo'
         '     Best ${_commas(max(best, session.score))}';
-    _level.text = 'Level ${session.level}/${session.levelCount}  '
-        '${session.def.sign}    Layer ${session.layer}/${session.layerCount}';
+    _level.text = session.tutorial
+        ? 'Tutorial    Layer ${session.layer}/${session.layerCount}'
+        : 'Level ${session.level}/${session.levelCount}  '
+            '${session.def.sign}    Layer ${session.layer}/${session.layerCount}';
+
+    _lesson.text = session.tutorial && session.status == SessionStatus.playing
+        ? 'TUTORIAL ${tutorial.index + 1}/${tutorial.steps.length}\n'
+            '${tutorial.text}\n\nESC: skip tutorial'
+        : '';
 
     final scoreLine =
         'Score ${_commas(session.score)}${_newBest ? '  NEW BEST!' : ''}';
     _banner.text = switch (session.status) {
       SessionStatus.playing => '',
+      SessionStatus.won when session.tutorial && session.isLastLayer =>
+        'Tutorial complete!\n'
+            'Out in the real levels, enemies hit\n'
+            'your open line while you cut. Good luck.\n'
+            'Space: start Aries',
       SessionStatus.won when !session.isLastLayer =>
         '${session.def.sign}: layer ${session.layer} cleared\n'
             '+${_commas(session.levelBonus)} bonus\n'
@@ -244,10 +286,10 @@ class RegulusGame extends FlameGame with KeyboardEvents {
       SessionStatus.complete => 'The zodiac is yours\n'
           '+${_commas(session.levelBonus)} bonus\n'
           '$scoreLine\n'
-          'Space: play again',
+          'Space: play again    T: tutorial',
       SessionStatus.lost => 'Game over\n'
           '$scoreLine\n'
-          'Space: try again',
+          'Space: try again    T: tutorial',
     };
   }
 
@@ -261,6 +303,18 @@ class RegulusGame extends FlameGame with KeyboardEvents {
     if (_cutKeys.contains(event.logicalKey)) return KeyEventResult.handled;
 
     if (event is KeyDownEvent) {
+      // ESC skips the tutorial; T replays it from an end-of-run screen.
+      if (event.logicalKey == LogicalKeyboardKey.escape && session.tutorial) {
+        _finishTutorial();
+        session.restart();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.keyT &&
+          (session.status == SessionStatus.lost ||
+              session.status == SessionStatus.complete)) {
+        tutorial.start();
+        return KeyEventResult.handled;
+      }
       if (event.logicalKey == LogicalKeyboardKey.space ||
           event.logicalKey == LogicalKeyboardKey.enter) {
         // Space fires the held item mid-run. After a win it goes down a layer
@@ -269,6 +323,7 @@ class RegulusGame extends FlameGame with KeyboardEvents {
           case SessionStatus.playing:
             session.useHeld();
           case SessionStatus.won:
+            if (session.tutorial && session.isLastLayer) _finishTutorial();
             session.nextLevel();
           case SessionStatus.lost:
           case SessionStatus.complete:
