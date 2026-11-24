@@ -2,7 +2,6 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
-import 'package:flutter/painting.dart' show FontWeight, TextPainter, TextSpan, TextStyle;
 
 import '../config.dart';
 import '../grid/claim_grid.dart';
@@ -25,22 +24,43 @@ class ActorsLayer extends PositionComponent {
     ..style = PaintingStyle.stroke
     ..strokeWidth = 3;
 
-  /// The "?" on a buried drop, laid out once: laying out text every frame
-  /// allocates a native paragraph each time.
-  final TextPainter _question = TextPainter(
-    text: TextSpan(
-      text: '?',
-      style: TextStyle(
-        color: Palette.drop.withValues(alpha: 0.8),
-        fontSize: 22,
-        fontWeight: FontWeight.bold,
-      ),
-    ),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  final Paint _giftBody = Paint()..color = Palette.drop;
+  final Paint _giftRibbon = Paint()..color = Palette.accent;
 
   @override
   void update(double dt) => _time += dt;
+
+  /// A buried drop: a gift box. It says "surprise" without saying whether the
+  /// surprise is good or bad.
+  void _renderGift(Canvas canvas, Offset c) {
+    // Box, then a slightly wider lid.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(c.dx - 9, c.dy - 2, 18, 12),
+        const Radius.circular(2),
+      ),
+      _giftBody,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(c.dx - 11, c.dy - 7, 22, 6),
+        const Radius.circular(2),
+      ),
+      _giftBody,
+    );
+    // Ribbon down the middle and a bow on top.
+    canvas.drawRect(Rect.fromLTWH(c.dx - 2, c.dy - 7, 4, 17), _giftRibbon);
+    for (final side in const [-1.0, 1.0]) {
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(c.dx + side * 4.5, c.dy - 10),
+          width: 8,
+          height: 6,
+        ),
+        _giftRibbon,
+      );
+    }
+  }
 
   /// A border patrol: a white-hot spark that spins as it runs the edge.
   void _renderPatrol(Canvas canvas, PatrolBody p) {
@@ -327,7 +347,7 @@ class ActorsLayer extends PositionComponent {
 
     _renderSlot(canvas);
 
-    // Buried mystery drops: a soft shimmer and a "?", never the answer.
+    // Buried mystery drops: a soft shimmer and a gift box, never the answer.
     for (final d in session.drops) {
       final c = Offset(
         GameConfig.cellCenterX(session.grid.columnOf(d.cell)),
@@ -341,10 +361,7 @@ class ActorsLayer extends PositionComponent {
           ..color = Palette.drop.withValues(alpha: 0.18 + 0.15 * pulse)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
       );
-      _question.paint(
-        canvas,
-        c - Offset(_question.width / 2, _question.height / 2),
-      );
+      _renderGift(canvas, c);
     }
 
     final p = session.pickup;

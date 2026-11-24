@@ -1,14 +1,21 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
+
 /// Keeps the best score between runs, in a small text file. Failures are
 /// swallowed: a missing or unwritable file just means no saved best.
 class ScoreStore {
   ScoreStore({String? path}) : _path = path ?? _defaultPath();
 
   final String _path;
+  static const _webKey = 'regulus_best';
 
   Future<int> load() async {
     try {
+      if (kIsWeb) {
+        return (await SharedPreferences.getInstance()).getInt(_webKey) ?? 0;
+      }
       final file = File(_path);
       if (!await file.exists()) return 0;
       return int.tryParse((await file.readAsString()).trim()) ?? 0;
@@ -19,6 +26,10 @@ class ScoreStore {
 
   Future<void> save(int score) async {
     try {
+      if (kIsWeb) {
+        await (await SharedPreferences.getInstance()).setInt(_webKey, score);
+        return;
+      }
       final file = File(_path);
       await file.parent.create(recursive: true);
       await file.writeAsString('$score');
@@ -28,6 +39,7 @@ class ScoreStore {
   }
 
   static String _defaultPath() {
+    if (kIsWeb) return ''; // unused: the browser's storage is keyed instead
     final env = Platform.environment;
     final base = env['APPDATA'] ?? env['HOME'] ?? Directory.systemTemp.path;
     final sep = Platform.pathSeparator;
@@ -42,9 +54,13 @@ class ProgressStore {
   ProgressStore({String? path}) : _path = path ?? _defaultPath();
 
   final String _path;
+  static const _webKey = 'regulus_tutorial_done';
 
   Future<bool> tutorialDone() async {
     try {
+      if (kIsWeb) {
+        return (await SharedPreferences.getInstance()).getBool(_webKey) ?? false;
+      }
       return await File(_path).exists();
     } catch (_) {
       return false;
@@ -53,6 +69,10 @@ class ProgressStore {
 
   Future<void> markTutorialDone() async {
     try {
+      if (kIsWeb) {
+        await (await SharedPreferences.getInstance()).setBool(_webKey, true);
+        return;
+      }
       final file = File(_path);
       await file.parent.create(recursive: true);
       await file.writeAsString('done');
@@ -62,6 +82,7 @@ class ProgressStore {
   }
 
   static String _defaultPath() {
+    if (kIsWeb) return ''; // unused: the browser's storage is keyed instead
     final env = Platform.environment;
     final base = env['APPDATA'] ?? env['HOME'] ?? Directory.systemTemp.path;
     final sep = Platform.pathSeparator;

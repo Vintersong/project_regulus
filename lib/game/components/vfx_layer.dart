@@ -5,7 +5,9 @@ import 'package:flame/components.dart';
 import 'package:flutter/painting.dart' show FontWeight, TextStyle;
 
 import '../config.dart';
+import '../grid/drops.dart';
 import '../grid/events.dart';
+import 'drop_icons.dart';
 import '../grid/powerups.dart';
 import '../grid/session.dart';
 import '../palette.dart';
@@ -33,8 +35,10 @@ class _Ring {
 }
 
 class _Popup {
-  _Popup(this.x, this.y, this.text, this.color, this.size);
+  _Popup(this.x, this.y, this.text, this.color, this.size, {this.icon});
 
+  /// Drawn above the text when set (a collected drop's effect).
+  final DropEffect? icon;
   final double x, y;
   final String text;
   final Color color;
@@ -121,8 +125,9 @@ class VfxLayer extends PositionComponent {
     _rings.add(_Ring(x, y, radius, duration, color, delay));
   }
 
-  void _popup(double x, double y, String text, Color color, double size) {
-    _popups.add(_Popup(x, y, text, color, size));
+  void _popup(double x, double y, String text, Color color, double size,
+      {DropEffect? icon}) {
+    _popups.add(_Popup(x, y, text, color, size, icon: icon));
   }
 
   void _addShake(double amount) => _shake = min(1, max(_shake, amount));
@@ -189,7 +194,7 @@ class VfxLayer extends PositionComponent {
         final color = effect.good ? Palette.good : Palette.bad;
         _ring(_px(x), _py(y), 90, color, duration: 0.5);
         _burst(_px(x), _py(y), color, 24, speed: 180, life: 0.7, size: 3);
-        _popup(_px(x), _py(y) - 10, effect.label, color, 26);
+        _popup(_px(x), _py(y) - 10, effect.label, color, 26, icon: effect);
         if (!effect.good) _addShake(0.25);
 
       case ShieldBroke(:final x, :final y):
@@ -586,6 +591,16 @@ class VfxLayer extends PositionComponent {
         Vector2(p.x, p.y - 46 * t),
         anchor: Anchor.center,
       );
+      final icon = p.icon;
+      if (icon != null) {
+        paintDropIcon(
+          canvas,
+          icon,
+          Offset(p.x, p.y - 46 * t - p.size * 1.4),
+          p.size * 1.5,
+          p.color.withValues(alpha: 1 - t * t),
+        );
+      }
     }
   }
 }

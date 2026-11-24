@@ -5,13 +5,14 @@ import 'dart:math' show max;
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flame/input.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show KeyEventResult;
 
 import 'components/actors_layer.dart';
 import 'components/claim_grid_component.dart';
+import 'components/hud.dart';
 import 'components/move_hints.dart';
 import 'components/player.dart';
 import 'components/playfield_frame.dart';
@@ -70,7 +71,6 @@ class RegulusGame extends FlameGame with KeyboardEvents {
   final List<Direction> _held = [];
   Direction? get heldDirection => _held.isEmpty ? null : _held.last;
 
-  late final TextComponent _status; // top-left: progress and lives
   late final TextComponent _effects; // top-right: running elements
   late final TextComponent _banner; // centre: win / game over
   late final TextComponent _score; // bottom-left: score, combo, best
@@ -100,7 +100,6 @@ class RegulusGame extends FlameGame with KeyboardEvents {
           ),
         );
 
-    _status = label(Vector2(GameConfig.playfieldLeft, 10), Anchor.topLeft, 20);
     _effects = label(
       Vector2(GameConfig.playfieldLeft + GameConfig.playfieldWidth, 10),
       Anchor.topRight,
@@ -158,7 +157,7 @@ class RegulusGame extends FlameGame with KeyboardEvents {
     // Dev: REGULUS_DEMO=1 starts with some ground already won, so the shine
     // and the walkable-edge feedback can be looked at straight away. One
     // block touches the border (reachable), one floats free (not reachable).
-    if (kDebugMode && Platform.environment['REGULUS_DEMO'] == '1') {
+    if (kDebugMode && !kIsWeb && Platform.environment['REGULUS_DEMO'] == '1') {
       session.debugClaimRect(1, 1, 100, 70);
       session.debugClaimRect(120, 30, 200, 110);
     }
@@ -179,7 +178,8 @@ class RegulusGame extends FlameGame with KeyboardEvents {
         // The camera trembling is the screen shake.
         onShake: (o) => camera.viewfinder.position = Vector2(o.dx, o.dy),
       ),
-      _status,
+      ClaimBar(session),
+      EffectStrip(session),
       _effects,
       _banner,
       _score,
@@ -238,16 +238,11 @@ class RegulusGame extends FlameGame with KeyboardEvents {
       );
 
   void _refreshHud() {
-    final percent = (session.grid.claimedFraction * 100).floor();
-    final target = (session.grid.captureTarget * 100).round();
-    _status.text = 'Claimed $percent% / $target%    Lives ${session.lives}';
-
+    // Drop effects and the shield are icons now (EffectStrip); only the
+    // element timers stay as text.
     _effects.text = [
       for (final e in session.effects.running)
         '${e.key.name.toUpperCase()} ${e.value.toStringAsFixed(1)}s',
-      for (final e in session.dropEffects.running)
-        '${e.key.label} ${e.value.toStringAsFixed(1)}s',
-      if (session.shield) 'SHIELD',
     ].join('   ');
 
     final combo = session.combo > 1

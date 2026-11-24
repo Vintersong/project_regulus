@@ -1,5 +1,5 @@
 import 'package:flame/game.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 
 import 'game/palette.dart';
 import 'game/regulus_game.dart';
@@ -14,13 +14,20 @@ class RegulusApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    // The game draws everything itself, so the bare widgets layer is enough.
+    return WidgetsApp(
       title: 'Regulus',
+      color: Palette.letterbox,
       debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Palette.letterbox,
+      pageRouteBuilder: <T>(RouteSettings settings, WidgetBuilder builder) =>
+          PageRouteBuilder<T>(
+            settings: settings,
+            pageBuilder: (context, _, _) => builder(context),
+          ),
+      home: ColoredBox(
+        color: Palette.letterbox,
         // .controlled keeps one game instance across widget rebuilds.
-        body: GameWidget<RegulusGame>.controlled(gameFactory: RegulusGame.new),
+        child: GameWidget<RegulusGame>.controlled(gameFactory: RegulusGame.new),
       ),
     );
   }
