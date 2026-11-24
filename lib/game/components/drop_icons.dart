@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:ui';
 
 import '../grid/drops.dart';
+import '../grid/powerups.dart';
 
 /// Vector icons for the mystery-drop effects, drawn straight onto a canvas so
 /// no icon font or image assets are needed. Every icon fits a square of side
@@ -118,4 +119,108 @@ Path heartPath(Offset c, double w) {
     ..cubicTo(x - w * 0.75, y - h * 0.05, x - w * 0.4, y - h * 0.6, x, y - h * 0.2)
     ..cubicTo(x + w * 0.4, y - h * 0.6, x + w * 0.75, y - h * 0.05, x, y + h * 0.45)
     ..close();
+}
+
+/// A [Path] built in icon space: (-1..1, -1..1) around [c], scaled by [u].
+class _IconPath {
+  _IconPath(this.c, this.u);
+  final Offset c;
+  final double u;
+  final Path path = Path();
+
+  double _x(double v) => c.dx + v * u;
+  double _y(double v) => c.dy + v * u;
+
+  _IconPath move(double x, double y) {
+    path.moveTo(_x(x), _y(y));
+    return this;
+  }
+
+  _IconPath line(double x, double y) {
+    path.lineTo(_x(x), _y(y));
+    return this;
+  }
+
+  _IconPath quad(double cx, double cy, double x, double y) {
+    path.quadraticBezierTo(_x(cx), _y(cy), _x(x), _y(y));
+    return this;
+  }
+
+  _IconPath cubic(double x1, double y1, double x2, double y2, double x, double y) {
+    path.cubicTo(_x(x1), _y(y1), _x(x2), _y(y2), _x(x), _y(y));
+    return this;
+  }
+
+  Path close() => path..close();
+}
+
+/// Vector icons for the four elements, same rules as [paintDropIcon]: a
+/// square of side [size] centred on [c], one [color]. Fire is a flame, water
+/// a droplet, air three gusts, earth a pair of peaks.
+void paintElementIcon(
+  Canvas canvas,
+  ElementType element,
+  Offset c,
+  double size,
+  Color color,
+) {
+  final u = size / 2;
+  final fill = Paint()..color = color;
+  final stroke = Paint()
+    ..color = color
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = max(1.8, size * 0.12)
+    ..strokeCap = StrokeCap.round;
+  _IconPath b() => _IconPath(c, u);
+
+  switch (element) {
+    case ElementType.fire:
+      canvas.drawPath(
+        b()
+            .move(0, -1)
+            .cubic(0.15, -0.5, 0.8, -0.2, 0.7, 0.3)
+            .cubic(0.6, 0.8, 0.25, 1, 0, 1)
+            .cubic(-0.3, 1, -0.7, 0.7, -0.7, 0.25)
+            .cubic(-0.7, -0.1, -0.4, -0.3, -0.35, -0.6)
+            .cubic(-0.1, -0.5, -0.05, -0.8, 0, -1)
+            .close(),
+        fill,
+      );
+
+    case ElementType.water:
+      canvas.drawPath(
+        b()
+            .move(0, -1)
+            .cubic(0.2, -0.6, 0.75, 0, 0.75, 0.35)
+            .cubic(0.75, 0.75, 0.4, 1, 0, 1)
+            .cubic(-0.4, 1, -0.75, 0.75, -0.75, 0.35)
+            .cubic(-0.75, 0, -0.2, -0.6, 0, -1)
+            .close(),
+        fill,
+      );
+
+    case ElementType.air:
+      // Three gusts, each a gentle S.
+      for (final y in const [-0.55, 0.0, 0.55]) {
+        canvas.drawPath(
+          (b()
+                ..move(-0.9, y)
+                ..quad(-0.45, y - 0.4, 0, y)
+                ..quad(0.45, y + 0.4, 0.9, y))
+              .path,
+          stroke,
+        );
+      }
+
+    case ElementType.earth:
+      // A tall peak with a shorter one beside it.
+      canvas.drawPath(
+        b().move(-0.95, 0.8).line(-0.1, -0.85).line(0.75, 0.8).close(),
+        fill,
+      );
+      canvas.drawPath(
+        b().move(0.15, 0.8).line(0.6, -0.1).line(1, 0.8).close(),
+        fill,
+      );
+  }
 }

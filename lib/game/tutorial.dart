@@ -96,11 +96,13 @@ class Tutorial {
     ),
     TutorialStep(
       'Now cut across and reach the border again.\n'
-      'The smaller side is claimed. While cutting, your line is exposed.',
+      'The smaller side is claimed, and the bar at the top left fills up.\n'
+      'While cutting, your line is exposed.',
       done: (e) => e.any((x) => x is Captured),
     ),
     TutorialStep(
-      'An element appeared. Cut out to the orb to grab it.',
+      'An element appeared: the orb with the mountain icon (earth).\n'
+      'Fire is a flame, water a droplet, air a gust. Cut out to grab it.',
       onEnter: _placePickup,
       keepUp: () {
         if (session.pickup == null && session.held == null) _placePickup();
@@ -108,13 +110,15 @@ class Tutorial {
       done: (_) => session.held != null,
     ),
     TutorialStep(
-      'It sits in your item slot (top centre). Press SPACE to use it.\n'
-      'Earth cracks the ground open and claims the pockets.',
+      'It sits in your item slot (top centre), shown by its icon.\n'
+      'Press SPACE to use it. Earth cracks the ground open and claims the pockets.\n'
+      'Fire, water and air run for a few seconds: watch their icon at the top right.',
       done: (e) => e.any((x) => x is ItemUsed),
     ),
     TutorialStep(
-      'A "?" is a mystery drop. Claim the ground around it, or touch it\n'
-      'while cutting. In real levels it is a gamble: it can help or hurt!',
+      'A gift box is a mystery drop. Claim the ground around it, or touch it\n'
+      'while cutting. In real levels it is a gamble: it can help or hurt!\n'
+      'What it does shows as an icon at the top right (green good, red bad).',
       onEnter: _placeDrop,
       keepUp: () {
         if (session.drops.isEmpty) _placeDrop();
@@ -122,12 +126,12 @@ class Tutorial {
       done: (e) => e.any((x) => x is DropCollected),
     ),
     TutorialStep(
-      'Claim $_target% of the field to clear this layer.',
+      'Fill the bar up to the amber notch ($_target%) to clear this layer.',
       done: (_) => session.status == SessionStatus.won,
     ),
     TutorialStep(
       'Layer 2. Each level is a stack of layers: deeper ones change colour\n'
-      'and bring more enemies. Claim $_target% once more to finish.',
+      'and bring more enemies. Fill the bar to the notch once more to finish.',
       // Layer 1's win is still on screen when this step begins: wait for
       // the one on layer 2.
       done: (_) => session.status == SessionStatus.won && session.layer == 2,

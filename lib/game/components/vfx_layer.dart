@@ -35,10 +35,12 @@ class _Ring {
 }
 
 class _Popup {
-  _Popup(this.x, this.y, this.text, this.color, this.size, {this.icon});
+  _Popup(this.x, this.y, this.text, this.color, this.size,
+      {this.icon, this.element});
 
   /// Drawn above the text when set (a collected drop's effect).
   final DropEffect? icon;
+  final ElementType? element;
   final double x, y;
   final String text;
   final Color color;
@@ -126,8 +128,8 @@ class VfxLayer extends PositionComponent {
   }
 
   void _popup(double x, double y, String text, Color color, double size,
-      {DropEffect? icon}) {
-    _popups.add(_Popup(x, y, text, color, size, icon: icon));
+      {DropEffect? icon, ElementType? element}) {
+    _popups.add(_Popup(x, y, text, color, size, icon: icon, element: element));
   }
 
   void _addShake(double amount) => _shake = min(1, max(_shake, amount));
@@ -239,7 +241,8 @@ class VfxLayer extends PositionComponent {
   /// name, and a burst shaped like the element.
   void _itemBurst(ElementType element, double x, double y) {
     final color = Palette.forElement(element);
-    _popup(x, y - 40, '${element.name.toUpperCase()}!', color, 38);
+    _popup(x, y - 40, '${element.name.toUpperCase()}!', color, 38,
+        element: element);
     switch (element) {
       case ElementType.fire:
         // A fireball: a hot white core, a wall of rising embers, two
@@ -591,15 +594,15 @@ class VfxLayer extends PositionComponent {
         Vector2(p.x, p.y - 46 * t),
         anchor: Anchor.center,
       );
+      final iconAt = Offset(p.x, p.y - 46 * t - p.size * 1.4);
+      final iconColor = p.color.withValues(alpha: 1 - t * t);
       final icon = p.icon;
       if (icon != null) {
-        paintDropIcon(
-          canvas,
-          icon,
-          Offset(p.x, p.y - 46 * t - p.size * 1.4),
-          p.size * 1.5,
-          p.color.withValues(alpha: 1 - t * t),
-        );
+        paintDropIcon(canvas, icon, iconAt, p.size * 1.5, iconColor);
+      }
+      final element = p.element;
+      if (element != null) {
+        paintElementIcon(canvas, element, iconAt, p.size * 1.5, iconColor);
       }
     }
   }

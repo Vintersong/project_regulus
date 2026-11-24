@@ -9,6 +9,7 @@ import '../grid/enemy_body.dart';
 import '../grid/patrol_body.dart';
 import '../grid/session.dart';
 import '../palette.dart';
+import 'drop_icons.dart';
 
 /// Draws the session's enemies and the waiting pickup. One component for all
 /// of them: enemies come and go every few seconds, so there is nothing to add
@@ -282,6 +283,7 @@ class ActorsLayer extends PositionComponent {
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
       );
       canvas.drawCircle(c, r, Paint()..color = color);
+      paintElementIcon(canvas, item, c, r * 1.3, Palette.letterbox);
     }
     canvas.drawCircle(
       c,
@@ -387,6 +389,13 @@ class ActorsLayer extends PositionComponent {
         );
         canvas.drawCircle(c, r, Paint()..color = color.withValues(alpha: dim));
         canvas.drawCircle(c, r, _ring);
+        paintElementIcon(
+          canvas,
+          p.element,
+          c,
+          r * 1.3,
+          Palette.letterbox.withValues(alpha: dim),
+        );
       }
     }
   }

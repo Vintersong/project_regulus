@@ -71,7 +71,6 @@ class RegulusGame extends FlameGame with KeyboardEvents {
   final List<Direction> _held = [];
   Direction? get heldDirection => _held.isEmpty ? null : _held.last;
 
-  late final TextComponent _effects; // top-right: running elements
   late final TextComponent _banner; // centre: win / game over
   late final TextComponent _score; // bottom-left: score, combo, best
   late final TextComponent _level; // bottom-right
@@ -100,11 +99,6 @@ class RegulusGame extends FlameGame with KeyboardEvents {
           ),
         );
 
-    _effects = label(
-      Vector2(GameConfig.playfieldLeft + GameConfig.playfieldWidth, 10),
-      Anchor.topRight,
-      20,
-    );
     _banner = label(
       Vector2(GameConfig.viewWidth / 2, GameConfig.viewHeight / 2),
       Anchor.center,
@@ -178,9 +172,11 @@ class RegulusGame extends FlameGame with KeyboardEvents {
         // The camera trembling is the screen shake.
         onShake: (o) => camera.viewfinder.position = Vector2(o.dx, o.dy),
       ),
+      // Panels sit just under their text, so it reads on any ground colour.
+      TextPanel(_banner, priority: 19),
+      TextPanel(_lesson, priority: 24, opacity: 0.78),
       ClaimBar(session),
       EffectStrip(session),
-      _effects,
       _banner,
       _score,
       _level,
@@ -238,13 +234,6 @@ class RegulusGame extends FlameGame with KeyboardEvents {
       );
 
   void _refreshHud() {
-    // Drop effects and the shield are icons now (EffectStrip); only the
-    // element timers stay as text.
-    _effects.text = [
-      for (final e in session.effects.running)
-        '${e.key.name.toUpperCase()} ${e.value.toStringAsFixed(1)}s',
-    ].join('   ');
-
     final combo = session.combo > 1
         ? '     COMBO x${session.combo} (${session.comboTimeLeft.toStringAsFixed(1)}s)'
         : '';

@@ -78,14 +78,14 @@ class ClaimBar extends PositionComponent {
   }
 }
 
-/// Top-right, under the text list: one chip per running drop effect (and the
-/// shield), each an icon over a bar that drains as the effect runs out.
+/// Top-right: one chip per running element, drop effect and the shield, each
+/// an icon over a bar that drains as it runs out.
 class EffectStrip extends PositionComponent {
   EffectStrip(this.session)
       : super(
           position: Vector2(
             GameConfig.playfieldLeft + GameConfig.playfieldWidth,
-            38,
+            4,
           ),
           priority: 20,
         );
@@ -103,39 +103,107 @@ class EffectStrip extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    // (effect, fraction of its time left); the shield has no timer.
-    final chips = <(DropEffect, double)>[
-      if (session.shield) (DropEffect.shield, 1.0),
+    final chips = <_Chip>[
+      for (final e in session.effects.running)
+        _Chip(
+          Palette.forElement(e.key),
+          (canvas, c, size, color) =>
+              paintElementIcon(canvas, e.key, c, size, color),
+          e.value / e.key.duration,
+          e.value,
+        ),
+      if (session.shield)
+        _Chip(
+          Palette.good,
+          (canvas, c, size, color) =>
+              paintDropIcon(canvas, DropEffect.shield, c, size, color),
+          1,
+          0, // no timer
+        ),
       for (final e in session.dropEffects.running)
-        (e.key, (e.value / e.key.seconds).clamp(0.0, 1.0)),
+        _Chip(
+          e.key.good ? Palette.good : Palette.bad,
+          (canvas, c, size, color) =>
+              paintDropIcon(canvas, e.key, c, size, color),
+          e.value / e.key.seconds,
+          e.value,
+        ),
     ];
 
     var x = 0.0;
-    for (final (effect, left) in chips) {
+    for (final chip in chips) {
       x -= _chip;
-      final color = effect.good ? Palette.good : Palette.bad;
       // Flash in the last second so it reads as running out.
-      final blink = effect.seconds > 0 &&
-          left * effect.seconds < 1 &&
-          (left * effect.seconds * 8).floor().isEven;
+      final blink = chip.secondsLeft > 0 &&
+          chip.secondsLeft < 1 &&
+          (chip.secondsLeft * 8).floor().isEven;
+      final color = chip.color.withValues(alpha: blink ? 0.3 : 1);
       final rect = Rect.fromLTWH(x, 0, _chip, _chip);
       final rr = RRect.fromRectAndRadius(rect, const Radius.circular(8));
       canvas.drawRRect(rr, _bg);
-      canvas.drawRRect(rr, _ring..color = color.withValues(alpha: blink ? 0.3 : 1));
-      paintDropIcon(
-        canvas,
-        effect,
-        rect.center.translate(0, -3),
-        _chip * 0.5,
-        color.withValues(alpha: blink ? 0.3 : 1),
-      );
-      if (effect.seconds > 0) {
+      canvas.drawRRect(rr, _ring..color = color);
+      chip.paintIcon(canvas, rect.center.translate(0, -3), _chip * 0.5, color);
+      if (chip.secondsLeft > 0) {
         canvas.drawRect(
-          Rect.fromLTWH(x + 6, _chip - 8, (_chip - 12) * left, 3),
+          Rect.fromLTWH(
+            x + 6,
+            _chip - 8,
+            (_chip - 12) * chip.left.clamp(0.0, 1.0),
+            3,
+          ),
           _bar..color = color,
         );
       }
       x -= _gap;
     }
+  }
+}
+
+/// One thing to show in [EffectStrip]. [secondsLeft] of 0 means untimed.
+class _Chip {
+  _Chip(this.color, this.paintIcon, this.left, this.secondsLeft);
+
+  final Color color;
+  final void Function(Canvas canvas, Offset c, double size, Color color)
+      paintIcon;
+
+  /// Fraction of its time left, 0..1.
+  final double left;
+  final double secondsLeft;
+}
+
+/// A dark rounded panel drawn behind a [TextComponent] so the text stays
+/// readable over any ground colour. It follows the text's size, and draws
+/// nothing while the text is empty.
+class TextPanel extends PositionComponent {
+  TextPanel(this.target, {required int priority, double opacity = 0.88})
+      : _fill = Paint()..color = Palette.letterbox.withValues(alpha: opacity),
+        super(priority: priority);
+
+  final TextComponent target;
+  final Paint _fill;
+  final Paint _edge = Paint()
+    ..color = Palette.line.withValues(alpha: 0.6)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2;
+
+  static const double _padX = 28;
+  static const double _padY = 18;
+
+  @override
+  void render(Canvas canvas) {
+    if (target.text.isEmpty) return;
+    final topLeft = target.topLeftPosition;
+    final rr = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        topLeft.x - _padX,
+        topLeft.y - _padY,
+        target.size.x + _padX * 2,
+        target.size.y + _padY * 2,
+      ),
+      const Radius.circular(14),
+    );
+    canvas.drawRRect(rr, _fill);
+    canvas.drawRRect(rr, _edge);
   }
 }
