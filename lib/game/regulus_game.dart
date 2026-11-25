@@ -5,7 +5,7 @@ import 'dart:math' show max;
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flame/input.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show ValueNotifier, kDebugMode, kIsWeb;
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show KeyEventResult;
@@ -21,6 +21,7 @@ import 'config.dart';
 import 'grid/direction.dart';
 import 'grid/powerups.dart';
 import 'grid/session.dart';
+import 'input_mode.dart';
 import 'palette.dart';
 import 'score_store.dart';
 import 'tutorial.dart';
@@ -69,8 +70,27 @@ class RegulusGame extends FlameGame with KeyboardEvents {
 
   /// Held directions in press order; the most recent one wins.
   final List<Direction> _held = [];
-  Direction? get heldDirection => _held.isEmpty ? null : _held.last;
 
+  /// The direction the on-screen D-pad is holding, if any. Keyboard and touch
+  /// can both be live; the pad wins while a finger is on it.
+  Direction? _touchDirection;
+  Direction? get heldDirection =>
+      _touchDirection ?? (_held.isEmpty ? null : _held.last);
+
+  /// The cut modifier comes from a key or the on-screen CUT button.
+  bool _keyCut = false;
+  bool _touchCut = false;
+
+  /// For the touch overlay, which rebuilds only when these change.
+  final ValueNotifier<SessionStatus> statusListenable =
+      ValueNotifier(SessionStatus.playing);
+  final ValueNotifier<bool> tutorialListenable = ValueNotifier(false);
+
+  /// When the session last changed status. A tap on a result screen is
+  /// ignored for a moment, so a thumb still mashing doesn't skip it.
+  DateTime _statusChangedAt = DateTime.now();
+
+  late final TextComponent _hint; // bottom-centre: what the keys do
   late final TextComponent _banner; // centre: win / game over
   late final TextComponent _score; // bottom-left: score, combo, best
   late final TextComponent _level; // bottom-right
@@ -128,21 +148,23 @@ class RegulusGame extends FlameGame with KeyboardEvents {
       20,
     );
 
-    // A reminder of the two actions that aren't just moving.
-    world.add(
-      TextComponent(
-        text: 'SHIFT / Z: cut     SPACE: use item',
-        position: Vector2(GameConfig.viewWidth / 2, bottom + 3),
-        anchor: Anchor.topCenter,
-        priority: 20,
-        textRenderer: TextPaint(
-          style: TextStyle(
-            color: Palette.line.withValues(alpha: 0.6),
-            fontSize: 14,
-          ),
+    // A reminder of the two actions that aren't just moving. (On touch the
+    // buttons are labelled, so the line is blank there; see _refreshHud.)
+    _hint = TextComponent(
+      position: Vector2(GameConfig.viewWidth / 2, bottom + 3),
+      anchor: Anchor.topCenter,
+      priority: 20,
+      textRenderer: TextPaint(
+        style: TextStyle(
+          color: Palette.line.withValues(alpha: 0.6),
+          fontSize: 14,
         ),
       ),
     );
+    world.add(_hint);
+
+    // Nothing is held yet: a cut needs the CUT key or button.
+    _applyCut();
 
     best = await _store.load();
     // First launch: the tutorial runs by itself (ESC skips it).
@@ -213,6 +235,7 @@ class RegulusGame extends FlameGame with KeyboardEvents {
   void _trackStatus() {
     if (session.status == _lastStatus) return;
     _lastStatus = session.status;
+    _statusChangedAt = DateTime.now();
     if (session.status == SessionStatus.playing) {
       _newBest = false;
       return;
@@ -227,6 +250,64 @@ class RegulusGame extends FlameGame with KeyboardEvents {
 
   /// Remembers the tutorial is done, so it won't run by itself again.
   void _finishTutorial() => unawaited(_progress.markTutorialDone());
+
+  // Input entry points. The keyboard handler and the touch overlay both go
+  // through these, so the two can't drift apart.
+
+  /// The D-pad's direction, or null when the finger lifts.
+  void setTouchDirection(Direction? direction) => _touchDirection = direction;
+
+  /// The on-screen CUT button, held while the finger is down.
+  void setTouchCut(bool held) {
+    _touchCut = held;
+    _applyCut();
+  }
+
+  void _applyCut() => session.canStartCut = _keyCut || _touchCut;
+
+  /// Fires the held element (SPACE in play, the ITEM button).
+  void useItem() {
+    if (session.status == SessionStatus.playing) session.useHeld();
+  }
+
+  /// SPACE / ENTER: fire the held item mid-run. After a win it goes down a
+  /// layer or on to the next level; after a loss or the final win, a new run.
+  void confirm() {
+    switch (session.status) {
+      case SessionStatus.playing:
+        session.useHeld();
+      case SessionStatus.won:
+        if (session.tutorial && session.isLastLayer) _finishTutorial();
+        session.nextLevel();
+      case SessionStatus.lost:
+      case SessionStatus.complete:
+        session.restart();
+    }
+  }
+
+  /// A tap on a result screen (touch's SPACE). Ignored in play, and for a
+  /// moment after the screen appears.
+  void tapToContinue() {
+    if (session.status == SessionStatus.playing) return;
+    final since = DateTime.now().difference(_statusChangedAt);
+    if (since < const Duration(milliseconds: 700)) return;
+    confirm();
+  }
+
+  /// ESC, or the SKIP button: leave the tutorial for a real run.
+  void skipTutorial() {
+    if (!session.tutorial) return;
+    _finishTutorial();
+    session.restart();
+  }
+
+  /// T, or the TUTORIAL button on an end-of-run screen.
+  void replayTutorial() {
+    if (session.status == SessionStatus.lost ||
+        session.status == SessionStatus.complete) {
+      tutorial.start();
+    }
+  }
 
   static String _commas(int n) => n.toString().replaceAllMapped(
         RegExp(r'\B(?=(\d{3})+(?!\d))'),
@@ -245,13 +326,23 @@ class RegulusGame extends FlameGame with KeyboardEvents {
             '${session.def.sign}    Layer ${session.layer}/${session.layerCount}';
 
     _lesson.text = session.tutorial && session.status == SessionStatus.playing
-        ? 'TUTORIAL ${tutorial.index + 1}/${tutorial.steps.length}\n'
-            '${tutorial.text}\n\nESC: skip tutorial'
+        ? InputMode.adapt(
+            'TUTORIAL ${tutorial.index + 1}/${tutorial.steps.length}\n'
+            '${tutorial.text}\n\n'
+            '${InputMode.isTouch ? 'Tap SKIP to skip the tutorial' : 'ESC: skip tutorial'}',
+          )
         : '';
+
+    _hint.text =
+        InputMode.isTouch ? '' : 'SHIFT / Z: cut     SPACE: use item';
+
+    // The touch overlay listens to these; they only notify on a change.
+    statusListenable.value = session.status;
+    tutorialListenable.value = session.tutorial;
 
     final scoreLine =
         'Score ${_commas(session.score)}${_newBest ? '  NEW BEST!' : ''}';
-    _banner.text = switch (session.status) {
+    final banner = switch (session.status) {
       SessionStatus.playing => '',
       SessionStatus.won when session.tutorial && session.isLastLayer =>
         'Tutorial complete!\n'
@@ -275,6 +366,7 @@ class RegulusGame extends FlameGame with KeyboardEvents {
           '$scoreLine\n'
           'Space: try again    T: tutorial',
     };
+    _banner.text = InputMode.adapt(banner);
   }
 
   @override
@@ -282,37 +374,28 @@ class RegulusGame extends FlameGame with KeyboardEvents {
     KeyEvent event,
     Set<LogicalKeyboardKey> keysPressed,
   ) {
-    // A cut only starts while the cut key is held.
-    session.canStartCut = keysPressed.any(_cutKeys.contains);
+    // A cut only starts while the cut key (or the CUT button) is held.
+    _keyCut = keysPressed.any(_cutKeys.contains);
+    _applyCut();
     if (_cutKeys.contains(event.logicalKey)) return KeyEventResult.handled;
 
     if (event is KeyDownEvent) {
+      // A key press means a keyboard is in use: the touch controls step aside.
+      InputMode.touch.value = false;
       // ESC skips the tutorial; T replays it from an end-of-run screen.
       if (event.logicalKey == LogicalKeyboardKey.escape && session.tutorial) {
-        _finishTutorial();
-        session.restart();
+        skipTutorial();
         return KeyEventResult.handled;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyT &&
           (session.status == SessionStatus.lost ||
               session.status == SessionStatus.complete)) {
-        tutorial.start();
+        replayTutorial();
         return KeyEventResult.handled;
       }
       if (event.logicalKey == LogicalKeyboardKey.space ||
           event.logicalKey == LogicalKeyboardKey.enter) {
-        // Space fires the held item mid-run. After a win it goes down a layer
-        // or on to the next level; after a loss or the final win, a new run.
-        switch (session.status) {
-          case SessionStatus.playing:
-            session.useHeld();
-          case SessionStatus.won:
-            if (session.tutorial && session.isLastLayer) _finishTutorial();
-            session.nextLevel();
-          case SessionStatus.lost:
-          case SessionStatus.complete:
-            session.restart();
-        }
+        confirm();
         return KeyEventResult.handled;
       }
       // Dev shortcuts: 1-4 put fire, water, air, earth in the item slot
